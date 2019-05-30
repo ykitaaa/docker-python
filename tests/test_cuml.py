@@ -3,12 +3,9 @@ import unittest
 from sklearn import datasets
 from cuml import LinearRegression as cuLinearRegression
 import cudf as gd
-<<<<<<< HEAD
-=======
 import pandas as pd
 
 from common import gpu_test
->>>>>>> daxiongshu/rapids.ai
 
 # For full unit tests of rapids cuml, please run the following commands after building the docker.
 # docker run --runtime nvidia --rm -it kaggle/python-gpu-build /bin/bash
@@ -19,10 +16,7 @@ from common import gpu_test
 
 class TestCuml(unittest.TestCase):
 
-<<<<<<< HEAD
-=======
     @gpu_test
->>>>>>> daxiongshu/rapids.ai
     def test_linearn_classifier(self):
         boston = datasets.load_boston()
         X, y = boston.data, boston.target
