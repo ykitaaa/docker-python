@@ -1,6 +1,6 @@
 ARG BASE_TAG=staging
 
-FROM nvidia/cuda:9.2-cudnn7-devel-ubuntu16.04 AS nvidia
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04 AS nvidia
 FROM gcr.io/kaggle-images/python-tensorflow-whl:1.13.1-py36 as tensorflow_whl
 FROM gcr.io/kaggle-images/python:${BASE_TAG}
 
@@ -63,7 +63,7 @@ RUN pip install pycuda && \
     pip install pynvrtc && \
     /tmp/clean-layer.sh
 
-RUN conda install --override-channels -c nvidia/label/cuda10.0 -c rapidsai/label/cuda10.0 -c numba -c conda-forge cudf=0.6 cuml=0.6 python=3.6 &&\
+RUN conda install -c defaults -c nvidia -c rapidsai -c pytorch -c numba -c conda-forge cudf=0.7 cuml=0.7 python=3.6 cudatoolkit=10.0 &&\
     /tmp/clean-layer.sh
 
 # Re-add TensorBoard Jupyter extension patch
