@@ -1,6 +1,7 @@
 ARG BASE_TAG=2019.03
+ARG TENSORFLOW_VERSION=1.14.0
 
-FROM gcr.io/kaggle-images/python-tensorflow-whl:1.14.0-py36 as tensorflow_whl
+FROM gcr.io/kaggle-images/python-tensorflow-whl:${TENSORFLOW_VERSION}-py36 as tensorflow_whl
 FROM continuumio/anaconda3:${BASE_TAG}
 
 ARG GIT_COMMIT=unknown
@@ -8,6 +9,7 @@ ARG BUILD_DATE=unknown
 
 LABEL git-commit=$GIT_COMMIT
 LABEL build-date=$BUILD_DATE
+LABEL tensorflow-version=$TENSORFLOW_VERSION
 
 # Correlate current release with the git hash inside the kernel editor by running `!cat /etc/git_commit`.
 RUN echo "$GIT_COMMIT" > /etc/git_commit && echo "$BUILD_DATE" > /etc/build_date
@@ -41,10 +43,11 @@ RUN pip install seaborn python-dateutil dask && \
     libilmbase12 libjbig0 libjbig2dec0 libjpeg62-turbo liblcms2-2 liblqr-1-0 libltdl7 libmagickcore-6.q16-3 \
     libmagickcore-6.q16-3-extra libmagickwand-6.q16-3 libnetpbm10 libopenexr22 libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
     libpaper-utils libpaper1 libpixman-1-0 libpng16-16 librsvg2-2 librsvg2-common libthai-data libthai0 libtiff5 libwmf0.2-7 \
-    libxcb-render0 libxcb-shm0 netpbm poppler-data p7zip-full && \
+    libxcb-render0 libxcb-shm0 netpbm poppler-data p7zip-full python3-rtree && \
     cd /usr/local/src && \
-    wget --no-verbose https://imagemagick.org/download/ImageMagick.tar.gz && \
-    tar xzf ImageMagick.tar.gz && cd `ls -d ImageMagick-*` && pwd && ls -al && ./configure && \
+    # b/141476846 latest ImageMagick version fails to build.
+    wget --no-verbose https://github.com/ImageMagick/ImageMagick/archive/7.0.8-65.tar.gz && \
+    tar xzf 7.0.8-65.tar.gz && cd `ls -d ImageMagick-*` && pwd && ls -al && ./configure && \
     make -j $(nproc) && make install && \
     /tmp/clean-layer.sh
 
@@ -137,7 +140,8 @@ RUN apt-get -y install zlib1g-dev liblcms2-dev libwebp-dev libgeos-dev && \
     pip install cartopy && \
     # MXNet
     pip install mxnet && \
-    pip install --upgrade numpy && \
+    # b/140423854 v1.17 prints annoying deprecation warning messages with TensorFlow 1.14.0. Remove once we upgrade to TF 1.14.1 or 2.x
+    pip install numpy==1.16.4 && \
     pip install gluonnlp && \
     pip install gluoncv && \
     # h2o (requires java)
@@ -148,17 +152,6 @@ RUN apt-get -y install zlib1g-dev liblcms2-dev libwebp-dev libgeos-dev && \
     wget --no-verbose --no-check-certificate -i latest -O h2o.zip && rm latest && \
     unzip h2o.zip && rm h2o.zip && cp h2o-*/h2o.jar . && \
     pip install `find . -name "*whl"` && \
-    # Keras setup
-    # Keras likes to add a config file in a custom directory when it's
-    # first imported. This doesn't work with our read-only filesystem, so we
-    # have it done now
-    python -c "from keras.models import Sequential"  && \
-    # Switch to TF backend
-    sed -i 's/theano/tensorflow/' /root/.keras/keras.json  && \
-    # Re-run it to flush any more disk writes
-    python -c "from keras.models import Sequential; from keras import backend; print(backend._BACKEND)" && \
-    # Keras reverts to /tmp from ~ when it detects a read-only file system
-    mkdir -p /tmp/.keras && cp /root/.keras/keras.json /tmp/.keras && \
     /tmp/clean-layer.sh
 
 # b/128333086: Set PROJ_LIB to points to the proj4 cartographic library.
@@ -322,7 +315,6 @@ RUN pip install kmeans-smote --no-dependencies && \
     # Add google PAIR-code Facets
     cd /opt/ && git clone https://github.com/PAIR-code/facets && cd facets/ && jupyter nbextension install facets-dist/ --user && \
     export PYTHONPATH=$PYTHONPATH:/opt/facets/facets_overview/python/ && \
-    pip install --no-dependencies ethnicolr && \
     pip install tensorpack && \
     pip install pycountry && pip install iso3166 && \
     pip install pydash && \
@@ -342,12 +334,17 @@ RUN pip install kmeans-smote --no-dependencies && \
 RUN pip install --upgrade cython && \
     pip install --upgrade cysignals && \
     pip install pyfasttext && \
-    pip install ktext && \
+    # ktext has an explicit dependency on Keras 2.2.4 which is not
+    # compatible with TensorFlow 2.0 (support was added in Keras 2.3.0).
+    # Add the package back once it is fixed upstream.
+    # pip install ktext && \
     pip install fasttext && \
     apt-get install -y libhunspell-dev && pip install hunspell && \
-    pip install annoy && \
+    # b/138723119: annoy's latest version 1.16 was failing
+    pip install annoy==1.15.2 && \
     # Need to use CountEncoder from category_encoders before it's officially released
     pip install git+https://github.com/scikit-learn-contrib/categorical-encoding.git && \
+    pip install google-cloud-automl && \
     # Newer version crashes (latest = 1.14.0) when running tensorflow.
     # python -c "from google.cloud import bigquery; import tensorflow". This flow is common because bigquery is imported in kaggle_gcp.py
     # which is loaded at startup.
@@ -441,8 +438,9 @@ RUN pip install bcolz && \
 RUN pip install jsonnet overrides tensorboardX && \
     pip install flask>=1.0.2 flask-cors>=3.0.7 gevent>=1.3.6 && \
     pip install unidecode parsimonious>=0.8.0 sqlparse>=0.2.4 word2number>=1.1 && \
-    pip install pytorch-pretrained-bert>=0.6.0 jsonpickle && \
+    pip install pytorch-pretrained-bert>=0.6.0 pytorch-transformers==1.1.0 jsonpickle && \
     pip install requests>=2.18 editdistance conllu==0.11 && \
+    pip install conllu==1.3.1 ftfy && \
     pip install --no-dependencies allennlp && \
     /tmp/clean-layer.sh
 
@@ -487,9 +485,16 @@ RUN pip install flashtext && \
     pip install pykalman && \
     pip install optuna && \
     pip install chainercv && \
+    pip install chainer-chemistry && \
     pip install plotly_express && \
     pip install albumentations && \
+    pip install catalyst && \
+    pip install rtree && \
+    pip install osmnx && \
+    apt-get -y install libspatialindex-dev && \
     pip install pytorch-ignite && \
+    pip install qgrid && \
+    pip install bqplot && \
     /tmp/clean-layer.sh
 
 # Tesseract and some associated utility packages
@@ -525,6 +530,14 @@ RUN pip install --upgrade dask && \
     sed -i "s/^.*Matplotlib is building the font cache using fc-list.*$/# Warning removed by Kaggle/g" /opt/conda/lib/python3.6/site-packages/matplotlib/font_manager.py && \
     # Make matplotlib output in Jupyter notebooks display correctly
     mkdir -p /etc/ipython/ && echo "c = get_config(); c.IPKernelApp.matplotlib = 'inline'" > /etc/ipython/ipython_config.py && \
+    /tmp/clean-layer.sh
+
+# gcloud SDK https://cloud.google.com/sdk/docs/quickstart-debian-ubuntu
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" \
+    | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+    apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - && \
+    apt-get update -y && apt-get install google-cloud-sdk -y && \
     /tmp/clean-layer.sh
 
 # Add BigQuery client proxy settings

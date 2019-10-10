@@ -1,4 +1,5 @@
 import os
+import inspect
 from google.auth import credentials
 from google.auth.exceptions import RefreshError
 from google.cloud import bigquery
@@ -39,6 +40,9 @@ class KernelIntegrations():
     def has_gcs(self):
         return GcpTarget.GCS in self.integrations
 
+    def has_automl(self):
+        return GcpTarget.AUTOML in self.integrations
+
 
 class KaggleKernelCredentials(credentials.Credentials):
     """Custom Credentials used to authenticate using the Kernel's connected OAuth account.
@@ -57,6 +61,8 @@ class KaggleKernelCredentials(credentials.Credentials):
                 self.token, self.expiry = client.get_bigquery_access_token()
             elif self.target == GcpTarget.GCS:
                 self.token, self.expiry = client._get_gcs_access_token()
+            elif self.target == GcpTarget.AUTOML:
+                self.token, self.expiry = client._get_automl_access_token()
         except ConnectionError as e:
             Log.error(f"Connection error trying to refresh access token: {e}")
             print("There was a connection error trying to fetch the access token. "
@@ -111,6 +117,8 @@ class PublicBigqueryClient(bigquery.client.Client):
         # TODO: Remove this once https://github.com/googleapis/google-cloud-python/issues/7122 is implemented.
         self._connection = _DataProxyConnection(self)
 
+def has_been_monkeypatched(method):
+    return "kaggle_gcp" in inspect.getsourcefile(method)
 
 def init_bigquery():
     from google.auth import environment_vars
@@ -122,7 +130,7 @@ def init_bigquery():
         return bigquery
 
     # If this Kernel has bigquery integration on startup, preload the Kaggle Credentials
-    # object for magics to work. 
+    # object for magics to work.
     if get_integrations().has_bigquery():
         from google.cloud.bigquery import magics
         magics.context.credentials = KaggleKernelCredentials()
@@ -131,7 +139,7 @@ def init_bigquery():
         from kaggle_gcp import get_integrations, PublicBigqueryClient, KaggleKernelCredentials
         specified_credentials = kwargs.get('credentials')
         has_bigquery = get_integrations().has_bigquery()
-        # Prioritize passed in project id, but if it is missing look for env var. 
+        # Prioritize passed in project id, but if it is missing look for env var.
         arg_project = kwargs.get('project')
         explicit_project_id = arg_project or os.environ.get(environment_vars.PROJECT)
         # This is a hack to get around the bug in google-cloud library.
@@ -145,7 +153,6 @@ def init_bigquery():
             Log.info(msg)
             print(msg)
             return PublicBigqueryClient(*args, **kwargs)
-
         else:
             if specified_credentials is None:
                 Log.info("No credentials specified, using KaggleKernelCredentials.")
@@ -154,15 +161,32 @@ def init_bigquery():
                     Log.info("No bigquery integration found, creating client anyways.")
                     print('Please ensure you have selected a BigQuery '
                         'account in the Kernels Settings sidebar.')
+            if explicit_project_id is None:
+                Log.info("No project specified while using the unmodified client.")
+                print('Please ensure you specify a project id when creating the client'
+                    ' in order to use your BigQuery account.')
             return bq_client(*args, **kwargs)
 
     # Monkey patches BigQuery client creation to use proxy or user-connected GCP account.
     # Deprecated in favor of Kaggle.DataProxyClient().
     # TODO: Remove this once uses have migrated to that new interface.
     bq_client = bigquery.Client
-    bigquery.Client = lambda *args, **kwargs:  monkeypatch_bq(
-        bq_client, *args, **kwargs)
+    if (not has_been_monkeypatched(bigquery.Client)):
+        bigquery.Client = lambda *args, **kwargs:  monkeypatch_bq(
+            bq_client, *args, **kwargs)
     return bigquery
+
+def monkeypatch_client(client_klass, kaggle_kernel_credentials):
+    client_init = client_klass.__init__
+    def patched_init(self, *args, **kwargs):
+        specified_credentials = kwargs.get('credentials')
+        if specified_credentials is None:
+            Log.info("No credentials specified, using KaggleKernelCredentials.")
+            kwargs['credentials'] = kaggle_kernel_credentials
+        return client_init(self, *args, **kwargs)
+
+    if (not has_been_monkeypatched(client_klass.__init__)):
+        client_klass.__init__ = patched_init
 
 def init_gcs():
     is_user_secrets_token_set = "KAGGLE_USER_SECRETS_TOKEN" in os.environ
@@ -176,20 +200,42 @@ def init_gcs():
 
     from kaggle_secrets import GcpTarget
     from kaggle_gcp import KaggleKernelCredentials
-    gcs_client_init = storage.Client.__init__
-    def monkeypatch_gcs(self, *args, **kwargs):
-        specified_credentials = kwargs.get('credentials')
-        if specified_credentials is None:
-            Log.info("No credentials specified, using KaggleKernelCredentials.")
-            kwargs['credentials'] = KaggleKernelCredentials(target=GcpTarget.GCS)
-        return gcs_client_init(self, *args, **kwargs)
-
-    storage.Client.__init__ = monkeypatch_gcs
+    monkeypatch_client(
+        storage.Client,
+        KaggleKernelCredentials(target=GcpTarget.GCS))
     return storage
+
+def init_automl():
+    is_user_secrets_token_set = "KAGGLE_USER_SECRETS_TOKEN" in os.environ
+    from google.cloud import automl_v1beta1 as automl
+    if not is_user_secrets_token_set:
+        return automl
+
+    from kaggle_gcp import get_integrations
+    if not get_integrations().has_automl():
+        return automl
+
+    from kaggle_secrets import GcpTarget
+    from kaggle_gcp import KaggleKernelCredentials
+    kaggle_kernel_credentials = KaggleKernelCredentials(target=GcpTarget.AUTOML)
+
+    # The AutoML client library exposes 4 different client classes (AutoMlClient,
+    # TablesClient, PredictionServiceClient and GcsClient), so patch each of them.
+    # The same KaggleKernelCredentials are passed to all of them.
+    monkeypatch_client(automl.AutoMlClient, kaggle_kernel_credentials)
+    monkeypatch_client(automl.TablesClient, kaggle_kernel_credentials)
+    monkeypatch_client(automl.PredictionServiceClient, kaggle_kernel_credentials)
+    # TODO(markcollins): The GcsClient in the AutoML client library version
+    # 0.5.0 doesn't handle credentials properly. I wrote PR:
+    # https://github.com/googleapis/google-cloud-python/pull/9299
+    # to address this issue. Add patching for GcsClient when we get a version of
+    # the library that includes the fixes.
+    return automl
 
 def init():
     init_bigquery()
     init_gcs()
+    init_automl()
 
 # We need to initialize the monkeypatching of the client libraries
 # here since there is a circular dependency between our import hook version
