@@ -3,14 +3,6 @@ import pandas as pd
 
 from common import gpu_test
 
-# For full unit tests of rapids cudf, please run the following commands after building the docker.
-# docker run --runtime nvidia --rm -it kaggle/python-gpu-build /bin/bash
-# export LD_LIBRARY_PATH=/usr/local/cuda/lib64
-# python -c "import cudf as gd"
-# conda uninstall --yes pytest && pip install -U pytest
-# cd /opt/conda/lib/python3.6/site-packages/cudf/tests
-# pytest -v --ignore=test_sparse_df.py --ignore=test_orc.py
-
 class TestCudf(unittest.TestCase):
  
     @gpu_test   
