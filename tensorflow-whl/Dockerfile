@@ -66,6 +66,7 @@ RUN cd /usr/local/src && \
     pip install keras_applications --no-deps && \
     pip install keras_preprocessing --no-deps
 
+# TODO(rosbo): Only build a GPU version.
 # Create a tensorflow wheel for CPU
 RUN cd /usr/local/src/tensorflow && \
     cat /dev/null | ./configure && \

@@ -41,10 +41,11 @@ RUN pip install seaborn python-dateutil dask && \
     make -j $(nproc) && make install && \
     /tmp/clean-layer.sh
 
-# Install tensorflow from a pre-built wheel
-COPY --from=tensorflow_whl /tmp/tensorflow_cpu/*.whl /tmp/tensorflow_cpu/
-RUN pip install /tmp/tensorflow_cpu/tensorflow*.whl && \
-    rm -rf /tmp/tensorflow_cpu && \
+# Install tensorflow from a pre-built wheel.
+# Starting in TF 2.x, the same tensorflow packages can be used for both GPU and CPU-only.
+COPY --from=tensorflow_whl /tmp/tensorflow_gpu/*.whl /tmp/tensorflow_gpu/
+RUN pip install /tmp/tensorflow_gpu/tensorflow*.whl && \
+    rm -rf /tmp/tensorflow_gpu && \
     /tmp/clean-layer.sh
 
 RUN apt-get install -y libfreetype6-dev && \
