@@ -500,3 +500,12 @@ LABEL tensorflow-version=$TENSORFLOW_VERSION
 
 # Correlate current release with the git hash inside the kernel editor by running `!cat /etc/git_commit`.
 RUN echo "$GIT_COMMIT" > /etc/git_commit && echo "$BUILD_DATE" > /etc/build_date
+
+# Listen Port
+EXPOSE 8888
+
+# Notebook EntryPoint
+ENTRYPOINT ["jupyter-lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=''"]
+
+# Notebook Directory
+CMD ["--notebook-dir=/work"]
