@@ -15,7 +15,7 @@ EOF
 
 CACHE_FLAG='--no-cache'
 DOCKERFILE='Dockerfile'
-IMAGE_TAG='kaggle/python-build'
+IMAGE_TAG='tennen/python-build'
 BUILD_ARGS=''
 
 while :; do
