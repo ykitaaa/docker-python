@@ -433,6 +433,12 @@ RUN apt-get install tesseract-ocr -y && \
     /tmp/clean-layer.sh
 ENV TESSERACT_PATH=/usr/bin/tesseract
 
+# Original
+RUN pip install kaggle && \
+    mkdir /work
+WORKDIR /work
+VOLUME ${PWD}:/work
+
 # For Facets
 ENV PYTHONPATH=$PYTHONPATH:/opt/facets/facets_overview/python/
 # For Theano with MKL
