@@ -12,7 +12,8 @@ EOF
 }
 
 CACHE_FLAG='--no-cache'
-IMAGE_TAG='kaggle/python-tensorflow-whl'
+# IMAGE_TAG='kaggle/python-tensorflow-whl'
+IMAGE_TAG='tennen/python-tensorflow-whl'
 
 while :; do
     case "$1" in 
