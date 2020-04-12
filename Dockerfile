@@ -435,10 +435,7 @@ RUN apt-get install tesseract-ocr -y && \
 ENV TESSERACT_PATH=/usr/bin/tesseract
 
 # Original
-RUN pip install kaggle && \
-    mkdir /work
-WORKDIR /work
-VOLUME ${PWD}:/work
+RUN pip install kaggle
 
 # For Facets
 ENV PYTHONPATH=$PYTHONPATH:/opt/facets/facets_overview/python/
